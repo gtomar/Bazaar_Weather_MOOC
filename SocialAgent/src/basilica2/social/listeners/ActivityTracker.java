@@ -58,7 +58,7 @@ public class ActivityTracker extends BasilicaAdapter implements TimeoutReceiver
 
 	public static String GENERIC_NAME = "ActivityTracker";
 	public static String GENERIC_TYPE = "Filter";
-	private double activity_prompt_pulse = 4;
+	private double activity_prompt_pulse = 2; // Checking activity every two minutes
 	private int group_activity_min_threshold = 2; // Less than 2 turns in 3
 													// minutes is bad!
 	private Map<String, Integer> messageCounts;

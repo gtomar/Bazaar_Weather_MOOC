@@ -1,2 +1,2 @@
-# Bazaar
+# Bazaar --> Bazaar Weather MOOC
 

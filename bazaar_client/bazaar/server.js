@@ -31,11 +31,36 @@ function handleDisconnect() {
   });
 }
 
+//To Introduce sleep while loading client page
+function sleep(milliseconds) {
+  var start = new Date().getTime();
+  while (1) {
+    if ((new Date().getTime() - start) > milliseconds){
+      break;
+    }
+  }
+}
+
+function pad(num, digits)
+{
+    var str = '' + num;
+    while (str.length < digits)
+    {
+        str = '0' + str;
+    }
+    return str;
+}
+
+function puts(error, stdout, stderr) { sys.puts(stdout) }
+
 handleDisconnect();
 
-
+var numUsers = 0; //number of users in chatroom
+var teamNumber = -1; //team id
 var express = require('express');
 var csv = require('csv');
+var sys = require('sys')
+var exec = require('child_process').exec;
 
 var app = express()
   , http = require('http')
@@ -47,6 +72,28 @@ server.listen(8015);
 // routing
 
 io.set('log level', 1);
+
+// when user/student try to login chat room
+// earlier this code was in lobby
+app.get('/login/*', function (req, res)
+{
+    //first user to enter chat room
+    if(numUsers <= 0)
+    {
+        //increment team id
+        teamNumber = teamNumber + 1;
+        //start agent
+        exec("../lobby/launch_agent.sh " + "cscl_class2015_"+" "+teamNumber+' "none"', puts);
+        //wait 5 seconds for agent to enter chat room
+        sleep(5000);
+    }
+    
+    //enter chat room
+    var roomname = 'cscl_class2015_' + pad(teamNumber, 2);
+    var url = 'http://erebor.lti.cs.cmu.edu:8015/chat/'+ roomname  + '/' + req.query.userId + '/';
+    res.writeHead(301,{Location: url});
+    res.end();
+});
 
 app.get('/chat/*', function (req, res) 
 {
@@ -125,6 +172,13 @@ function loadHistory(socket, secret)
     if(!socket.temporary)
     {
         //var connection = mysql.createConnection(mysql_auth);
+        //keeping track of user ids also
+        var id = null;
+        if(socket.room in usernames && socket.username in usernames[socket.room])
+        {
+	    	id = usernames[socket.room][socket.username];
+        }
+        
         connection.query('insert ignore into nodechat.room set name='+connection.escape(socket.room)+', created=NOW(), modified=NOW(), comment="auto-created";', function(err, rows, fields)
         {    
             setTimeout( function(socket)
@@ -143,7 +197,7 @@ function loadHistory(socket, secret)
 		    
 		    if(!secret)
 		    {
-			io.sockets.in(socket.room).emit('updatepresence', socket.username, 'join');
+			io.sockets.in(socket.room).emit('updatepresence', socket.username, 'join', id);
 			logMessage(socket, "join", "presence");
 		    }
                 });
@@ -155,7 +209,7 @@ function loadHistory(socket, secret)
     }
     else if(!secret)
     {
-	io.sockets.in(socket.room).emit('updatepresence', socket.username, 'join');
+	io.sockets.in(socket.room).emit('updatepresence', socket.username, 'join', id);
     }
 }
 
@@ -175,9 +229,9 @@ function logMessage(socket, content, type)
     endpoint = "unknown"
     if(socket.handshake)
 	endpoint = socket.handshake.address;
-    query = 'insert into nodechat.message (roomid, username, useraddress, content, type, timestamp)' 
+    query = 'insert into nodechat.message (roomid, username, useraddress, userid, content, type, timestamp)' 
                     +'values ((select id from nodechat.room where name='+connection.escape(socket.room)+'), '
-                    +''+connection.escape(socket.username)+', '+connection.escape(endpoint.address+':'+endpoint.port)+', '+connection.escape(content)+', '+connection.escape(type)+', now());';
+                    +''+connection.escape(socket.username)+', '+connection.escape(endpoint.address+':'+endpoint.port)+', '+connection.escape(socket.id) +', '+connection.escape(content)+', '+connection.escape(type)+', now());';
                     
     
     connection.query(query, function(err, rows, fields) 
@@ -193,7 +247,7 @@ function logMessage(socket, content, type)
 io.sockets.on('connection', function (socket) {
 
     // when the client emits 'adduser', this listens and executes
-	socket.on('snoop', function(room){
+	socket.on('snoop', function(room, id){
 	
 	   origin = socket.handshake.address
 	   username = "Data Collector @ "+origin.address;
@@ -208,10 +262,11 @@ io.sockets.on('connection', function (socket) {
 	    socket.username = username;
 	    // store the room name in the socket session for this client
 	    socket.room = room;
+        socket.id = id;
 	    // add the client's username to the global list
-	    //if(!usernames[room])
-	    //  usernames[room] = {};
-	    //usernames[room][username] = username;
+	    if(!usernames[room])
+	      usernames[room] = {};
+	    usernames[room][username] = id;
 	    // send client to room 1
 	    socket.join(room);
 	    // echo to client they've connected
@@ -222,9 +277,15 @@ io.sockets.on('connection', function (socket) {
 
 
 	// when the client emits 'adduser', this listens and executes
-	socket.on('adduser', function(room, username, temporary){
-	
-	   if(isBlank(username))
+	socket.on('adduser', function(room, username, temporary, id){
+           
+       if(username != "VirtualCarolyn")
+	   {
+	   		//incrementing numbe rof users when a student enters chat room
+	   		numUsers = numUsers + 1;
+	   }
+
+       if(isBlank(username))
 	   {
 	       origin = socket.handshake.address
 	       username = "Guest "+(origin.address+origin.port).substring(6).replace(/\./g, '');
@@ -243,7 +304,7 @@ io.sockets.on('connection', function (socket) {
 	    // add the client's username to the global list
 	    if(!usernames[room])
 		usernames[room] = {};
-	    usernames[room][username] = username;
+	    usernames[room][username] = id;
 	    // send client to room 1
 	    socket.join(room);
 	    // echo to client they've connected
@@ -341,9 +402,15 @@ io.sockets.on('connection', function (socket) {
 	// when the user disconnects... perform this
 	socket.on('disconnect', function()
 	{
-	   
+        //decrement number of users when a student leaves the room
+        if(socket.username != "VirtualCarolyn")
+        {
+        	numUsers = numUsers - 1; 
+        }
 	    if(socket.room in usernames && socket.username in usernames[socket.room])
 	    {
+	        var id = usernames[socket.room][socket.username];
+	        
 		    // remove the username from global usernames list
             delete usernames[socket.room][socket.username];
             if(usernames[socket.room])
@@ -352,7 +419,7 @@ io.sockets.on('connection', function (socket) {
                 io.sockets.in(socket.room).emit('updateusers', usernames[socket.room]);
                 // echo globally that this client has left
                 
-                io.sockets.in(socket.room).emit('updatepresence', socket.username, 'leave');
+                io.sockets.in(socket.room).emit('updatepresence', socket.username, 'leave', id);
                 logMessage(socket, "leave", "presence");
             }
 	    }

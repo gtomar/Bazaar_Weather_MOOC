@@ -4,7 +4,7 @@
 </head>
 <body>
 <link href='http://fonts.googleapis.com/css?family=Oxygen' rel='stylesheet' type='text/css'>
-<link href='http://dadamson.bitbucket.org/include/discussion.css' rel='stylesheet' type='text/css'>	
+<link href='http://rawgit.com/gtomar/help-button-javascript/master/discussion.css' rel='stylesheet' type='text/css'>
 <script src="/socket.io/socket.io.js"></script>
 <script src="http://ajax.googleapis.com/ajax/libs/jquery/1.7.1/jquery.min.js"></script>
 <!-- <script src="https://ajax.googleapis.com/ajax/libs/jquery/1.6.4/jquery.min.js"></script> -->
@@ -146,8 +146,10 @@
 
 	// on connection to server, ask for user's name with an anonymous callback
 	socket.on('connect', function(){
+		//start tracking user id also
+		var id  = 'NA'
 		// call the server-side function 'adduser' and send one parameter (value of prompt)
-		groups = /\/(chat|observe)(\/tmp)?(?:\/([^\/]+)?)(?:\/([^\/]*))?/.exec(location.pathname)
+		groups = /\/(chat|observe|code)(\/tmp)?(?:\/([^\/]+)?)(?:\/([^\/]*))(?:\/([^\/]*))?/.exec(location.pathname);
 		
 		//if(groups[1] && groups[1].length > 0) alert("nothing is being saved to the database.");
 		  
@@ -156,18 +158,18 @@
         temp = groups[2] && groups[2].length > 0;
         room = groups[3];
         user = groups[4];
-		  
+        id = groups[4];
 		  
         if(live_chat)
         {
             if(!user)
                 user = prompt("Hi! Please enter your name (first name and last initial) to continue.", "David A");
               
-            socket.emit('adduser', room, user, temp);
+            socket.emit('adduser', room, user, temp, id);
 		}
 		else
 		{
-            socket.emit('snoop', room);
+            socket.emit('snoop', room, id);
             $('input,textarea').prop('disabled', true);
 		}
 		$('#roomname').text(room);
@@ -428,7 +430,7 @@
             <div id="messagebutton_div">
                 <input class="button" type="button" id="datasend" value="Send Message" />
             
-             <input class="button" type="button" id="ready_button" value="We're Ready"/> 
+            <!--  <input class="button" type="button" id="ready_button" value="We're Ready"/> -->
             </div>
     </div>
     </div>

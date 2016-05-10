@@ -31,7 +31,9 @@
  */
 package basilica2.tutor.listeners;
 
+import java.io.BufferedReader;
 import java.io.File;
+import java.io.InputStreamReader;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -92,19 +94,23 @@ public class TutorActor extends BasilicaAdapter implements TimeoutReceiver
 	
 	private double tutorMessagePriority = 0.75;
 	private boolean interruptForNewDialogues = false;
-	private boolean startAnyways = false;
+	//Allow agent to move to next tutoring prompt instead of waiting for student's reply indefinitely
+	private boolean startAnyways = true; 
 	private String dialogueFolder = "dialogs";
 	
 	private String dialogueConfigFile = "dialogues/dialogues-config.xml";
 	private int introduction_cue_timeout = 60;
 	private int introduction_cue_timeout2 = 60;
 	private int tutorTimeout = 45;
-	private String request_poke_prompt_text = "...?";
+	private String request_poke_prompt_text = "I am waiting for your response to start. Please ask for help if you are stuck.";
 	private String goahead_prompt_text = "Let's go ahead with this.";
-	private String response_poke_prompt_text = "...?";
+	private String response_poke_prompt_text = "Can you rephrase your response?";
 	private String dont_know_prompt_text = "Anybody?";
 	private String moving_on_text = "Okay, let's move on.";
 	private String tutorialCondition = "tutorial";
+	private int numUser = 1; //number of students currently in chat room
+	
+	private boolean block = false; //whether to block agent's tutoring
 
 	// private List<Dialog> dialogsReadyQueue = new ArrayList<Dialog>();
 
@@ -217,6 +223,18 @@ public class TutorActor extends BasilicaAdapter implements TimeoutReceiver
 //		{
 //			return;
 //		}
+		//Block agent's tutoring for 15 seconds
+		//This flag will be true when a student has just entered
+		//a chat room
+		if(block)
+		{
+			try {
+			    Thread.sleep(15000);                 //1000 milliseconds is one second.
+			} catch(InterruptedException ex) {
+			    Thread.currentThread().interrupt();
+			}
+			block = false;
+		}
 		if (e instanceof DoTutoringEvent)
 		{
 			//queue up the start of the tutoring engine.
@@ -227,6 +245,26 @@ public class TutorActor extends BasilicaAdapter implements TimeoutReceiver
 		{
 			//start dialog engine
 			handleTutoringStartedEvent((TutoringStartedEvent) e);
+		}
+		else if (e instanceof PresenceEvent)
+		{
+			//keeping track of number of students in the chat room
+			PresenceEvent event = (PresenceEvent) e;
+			numUser = event.getNumUsers();
+		}
+		else if (e instanceof PromptEvent)
+		{
+			PromptEvent event  = (PromptEvent) e;
+			//If a student just entered the chat room and
+			// agent is introducing/greeting her
+			// then block flag will be true
+			// which means agent's tutoring will be blocked for next 15 seconds
+			// so that the incoming student has time to interact with other students in the room
+			// and agent does not interrupt with tutoring prompts
+			if(event.from.equals("INTRODUCTION"))
+			{
+				block = true;
+			}
 		}
 		else if (e instanceof MessageEvent)
 		{
@@ -398,18 +436,22 @@ public class TutorActor extends BasilicaAdapter implements TimeoutReceiver
 						{
 							if (!nullExpected)
 							{
-								// If expecting non-null response and didnt get
-								// it, poke for response
+								// If expecting non-null response and didnt get it
+								// Wait till number unanticipated responses exceeds a certain number
+								// This number depends on the number of students in the room ,i.e.,
+								// more the number of students in the chat room, more number of unanticipated responses will be tolerated
 								noMatchingResponseCount++;
-								if (noMatchingResponseCount == 1)
+								if (noMatchingResponseCount <= numUser + 2)
 								{
 									//TODONE: fire poke event in repsonse to student message
 //									TutorTurnsEvent tte = new TutorTurnsEvent(this, new String[] { response_poke_prompt_text,
 //											lastTutorTurns.get(lastTutorTurns.size() - 1) });
 //									this.dispatchEvent(myAgent.getComponent(tutoring_actor_name), tte);
-									sendTutorMessage(response_poke_prompt_text, lastTutorTurns.get(lastTutorTurns.size() - 1));
+									//No poke messages will be sent for unanticipated responses to reduce noise in the room
+									//sendTutorMessage(response_poke_prompt_text, lastTutorTurns.get(lastTutorTurns.size() - 1));
+									System.out.println("unanticipated response");
 								}
-								else if (noMatchingResponseCount >= 2)
+								else if (noMatchingResponseCount > numUser + 2)
 								{
 									// Give up and just go with Unanticipated
 									// Response match
@@ -551,11 +593,11 @@ public class TutorActor extends BasilicaAdapter implements TimeoutReceiver
 		String[] turns = tutorTurns.toArray(new String[0]);
 		TutorTurnsEvent tte = new TutorTurnsEvent(source, turns);
 		
-		//SHOULD IT BE HERE ??
-		/*if(turns.length == 0)
+		//gst : should it be here ?
+		if(turns.length == 0)
 		{
 			return;
-		}*/
+		}
 		
 		source.queueNewEvent(tte);
 		//PriorityEvent pete = PriorityEvent.makeBlackoutEvent("TUTOR_DIALOG", new MessageEvent(source, getAgent().getUsername(), join(turns), "TUTOR"), 1.0, 45, 10);
@@ -687,7 +729,7 @@ public class TutorActor extends BasilicaAdapter implements TimeoutReceiver
 	@Override
 	public Class[] getListenerEventClasses()
 	{
-		return new Class[]{MessageEvent.class, DoTutoringEvent.class,StudentTurnsEvent.class, MoveOnEvent.class, TutoringStartedEvent.class};
+		return new Class[]{MessageEvent.class, DoTutoringEvent.class,StudentTurnsEvent.class, MoveOnEvent.class, TutoringStartedEvent.class, PresenceEvent.class, PromptEvent.class};
 	}
 
 	@Override
