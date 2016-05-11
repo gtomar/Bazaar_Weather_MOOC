@@ -291,7 +291,7 @@ public class WebsocketChatClient extends Component implements ChatClient
 						// TODO Auto-generated catch block
 						e.printStackTrace();
 					}
-					PresenceEvent pe = new PresenceEvent(WebsocketChatClient.this, key, PresenceEvent.PRESENT);
+					PresenceEvent pe = new PresenceEvent(WebsocketChatClient.this, key, PresenceEvent.PRESENT, value);
 					WebsocketChatClient.this.broadcast(pe);
 				}
 				
